@@ -5,15 +5,20 @@ then Expose…, images pinned by digest).
 One part, `server`: Git over SSH (rockstorm/git-server: Alpine's OpenSSH with git-shell as the git user's shell, so a
 key signs in for git's own commands and nothing else). Its sign-in is seeded before the first start, into the new
 `keys` volume alone: an authorized_keys holding the one public key you set (GIT_SERVER_KEY, through the login: a public
-key is no secret, and a private key is refused), each line `restrict`ed (no shell, no forwarding, no terminal);
-passwords are not taken (SSH_AUTH_METHODS publickey). Two commands are seeded into git-shell's own folder, so that a
+key is no secret, and a private key is refused), each line `restrict`ed (no shell, no forwarding, no terminal),
+root's and readable by all (0644: sshd reads it as the git user, whatever that user's uid); the git user is given no
+password (the image sets one only from GIT_PASSWORD, which this recipe never sets). Two commands are seeded into
+git-shell's own folder, so that a
 repository is made over the same sign-in: `ssh -p 2222 git@127.0.0.1 new <name>` makes /srv/git/<name>.git (bare),
 `list` lists them. Repositories live in the `repos` volume. Installed on this PC alone (127.0.0.1:2222); Expose… opens
 it to your network.
 
-The pin: read from Docker Hub on 2026-11-25 (its manifest list alone, no image pulled). What the image does with these
-paths and SSH_AUTH_METHODS is its README's word (github.com/rockstorm101/git-server-docker), not read again for this
-release: check it against the image before your first Install…."""
+The pin: read from Docker Hub on 2026-11-25 (its manifest list, then its amd64 config blob; no layer, no image
+pulled). The config says: Entrypoint /docker-entrypoint.sh, Cmd /usr/sbin/sshd -D, no User (it starts as root), port
+22/tcp, no declared volume, and SSH_AUTHORIZED_KEYS_FILE=/home/git/.ssh/authorized_keys, GIT_REPOSITORIES_PATH=/srv/git,
+GIT_HOME=/home/git, GIT_USER=git: the paths this recipe uses. It does not say the git user's uid (1000, the repos
+volume's owner here, is Alpine's first user's: check it at your first Install…, or pushes to /srv/git are refused);
+SSH_AUTH_METHODS, which an earlier draft set, is none of the image's variables and is not set."""
 from __future__ import annotations
 
 import re
@@ -84,7 +89,7 @@ def spec(system: str, name: str, options: Mapping, key: str, pins: Mapping | Non
         raise Refusal(f"the Git server has no {system} image")
     fit = bool(options.get("fit"))
     seeds = [] if fit else [
-        {"volume": "keys", "path": "authorized_keys", "text": authorized_keys(key), "mode": 0o600},
+        {"volume": "keys", "path": "authorized_keys", "text": authorized_keys(key), "mode": 0o644},
         {"volume": "commands", "path": "new", "text": NEW, "mode": 0o755},
         {"volume": "commands", "path": "list", "text": LIST, "mode": 0o755},
         {"volume": "commands", "path": "help", "text": HELP, "mode": 0o755}]
@@ -95,10 +100,9 @@ def spec(system: str, name: str, options: Mapping, key: str, pins: Mapping | Non
         "ports": [{"name": "ssh", "container": 22, "host": host, "lan": bool(options.get("lan")),
                    "about": "Git over SSH, by key alone"}],
         "volumes": [{"name": "repos", "path": "/srv/git", "holds": "its repositories", "owner": UID},
-                    {"name": "keys", "path": "/home/git/.ssh", "holds": "the public keys that sign in", "owner": UID},
+                    {"name": "keys", "path": "/home/git/.ssh", "holds": "the public keys that sign in", "owner": None},
                     {"name": "commands", "path": "/home/git/git-shell-commands",
                      "holds": "the commands git-shell takes beside git's (new, list)", "owner": UID}],
-        "env": {"SSH_AUTH_METHODS": "publickey"},
         "seeds": seeds,
         "memory": (int(options.get("memory_mb") or 0) or MEMORY_MB) << 20,
         "health": {"port": "ssh", "path": "", "ready_s": 60}, "stop_s": 10}

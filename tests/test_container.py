@@ -60,6 +60,16 @@ def test_it_is_installed_on_this_pc_alone_first(tmp_path):
     assert [c["value"] for c in form["fields"][3]["choices"]] == ["no"]
 
 
+def test_its_paths_are_the_ones_its_image_says():
+    # its amd64 config blob, read 2026-11-25: SSH_AUTHORIZED_KEYS_FILE, GIT_REPOSITORIES_PATH, GIT_HOME
+    part = recipe.spec("linux", "server", {}, KEY, pins()).parts[0]
+    assert {v.name: v.path for v in part.volumes} == {"repos": "/srv/git", "keys": "/home/git/.ssh",
+                                                      "commands": "/home/git/git-shell-commands"}
+    assert [p.container for p in part.ports] == [22] and part.command == ()  # its own entrypoint and sshd run
+    keys = next(s for s in part.seeds if s.path == "authorized_keys")
+    assert keys.mode == 0o644 and next(v for v in part.volumes if v.name == "keys").owner is None
+
+
 def test_its_install_seeds_your_key_restricted_and_its_two_commands(tmp_path):
     w, p = world(tmp_path)
     end = w.install("server", "no")
@@ -70,7 +80,8 @@ def test_its_install_seeds_your_key_restricted_and_its_two_commands(tmp_path):
     assert set(commands) == {"new", "list", "help"} and b"git init --bare" in commands["new"]
     [made] = w.fake.argv_of("create")
     said = " ".join(made)
-    assert "-p 127.0.0.1:2222:22/tcp" in said and "SSH_AUTH_METHODS=publickey" in said
+    assert "-p 127.0.0.1:2222:22/tcp" in said and "PASSWORD" not in said  # the git user is given no password
+    assert recipe.spec("linux", "server", {}, KEY, pins()).parts[0].env == {}
     assert any("ssh -p 2222 git@127.0.0.1 new" in line for line in end["lines"])
     assert p.placement("server")["state"] == "installed" and p.present()
 

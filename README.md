@@ -19,16 +19,24 @@ of its own": Git's version, the repositories on this PC and a plain Git server).
   (rockstorm/git-server 2.54: OpenSSH with git-shell), installed, started, stopped, updated and removed only as a
   container through the container plugin you pick, each change a plan you approve on the page. Its sign-in is your
   public key (`GIT_SERVER_KEY`, through the login; a private key is refused), seeded into a new volume as
-  `authorized_keys`, each line `restrict`ed; passwords are not taken. Two commands are seeded for git-shell:
+  `authorized_keys`, each line `restrict`ed; the git user is given no password. Two commands are seeded for git-shell:
   `ssh -p 2222 git@127.0.0.1 new <name>` makes a bare repository, `list` lists them. On this PC alone
   (127.0.0.1:2222) until you Expose… it.
 
 ## Its pin
 
-`docker.io/rockstorm/git-server:2.54` at `sha256:302c9346…23bd4b`, read from Docker Hub on 2026-11-25 (its manifest list
-alone; no image pulled), 12.9 MB for amd64. What the image does with `/srv/git`, `/home/git/.ssh`,
-`git-shell-commands` and `SSH_AUTH_METHODS` is its README's word, not read again for this release: check it before
-your first Install…. An unread pin (`UNREAD`) is refused before any plan.
+`docker.io/rockstorm/git-server:2.54` at `sha256:302c9346…23bd4b`, read from Docker Hub on 2026-11-25 (its manifest
+list, then its amd64 config blob; no layer, no image pulled), 12.9 MB for amd64. An unread pin (`UNREAD`) is refused
+before any plan.
+
+What its config blob says: Entrypoint `/docker-entrypoint.sh`, Cmd `/usr/sbin/sshd -D`, no User (it starts as root),
+ExposedPorts `22/tcp`, no Volumes, WorkingDir `/`, and Env `GIT_USER=git`, `GIT_HOME=/home/git`,
+`SSH_AUTHORIZED_KEYS_FILE=/home/git/.ssh/authorized_keys`, `GIT_REPOSITORIES_PATH=/srv/git`,
+`DOCKER_ENTRYPOINT_DIR=/docker-entrypoint.d`. The recipe's paths are these. Fixed from it: `SSH_AUTH_METHODS` is none
+of the image's variables and is no longer set (the git user is given no password: the image sets one only from
+`GIT_PASSWORD`, which is never set); `authorized_keys` is root's and 0644, since sshd reads it as the git user, whose
+uid the blob does not say. The repositories volume is kept for uid 1000 (Alpine's first user): check it at your first
+Install…, or pushes are refused.
 
 ## Tests
 
